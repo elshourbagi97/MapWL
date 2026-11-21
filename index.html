@@ -832,9 +832,9 @@
       /* Leaflet container */
       #leafletEgyptMap {
         width: 100%;
-        height: 48vh;
-        min-height: 280px;
-        flex: 1 0 280px;
+        height: 58vh;
+        min-height: 360px;
+        flex: 1 0 360px;
         border-radius: 12px;
         border: 2px solid #334155;
         background: #06182c;
@@ -1979,8 +1979,8 @@
                 <div class="airport-checklist" id="airportChecklist"></div>
               </div>
 
-              <!-- Zone & Route Drawing Manager v5 -->
-              <div class="zone-launch">
+              <!-- Zone & Route Drawing Manager v5 (buttons hidden as duplicates of top nav) -->
+              <div class="zone-launch hidden" style="display:none !important;">
                 <button type="button" id="createZoneBtn">
                   ＋ Create New Zone / إنشاء منطقة
                 </button>
@@ -7496,14 +7496,18 @@
         background: #059669;
       }
 
-      /* Hover / Click Action Card for Shapes & Zones */
+      /* Hover / Click Action Card for Shapes & Zones (scrollable & mobile-safe) */
       .shape-hover-card {
         position: absolute;
-        bottom: 12px;
-        left: 12px;
-        right: 12px;
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+        max-height: calc(100% - 16px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
         z-index: 940;
-        background: rgba(15, 23, 42, 0.95);
+        background: rgba(15, 23, 42, 0.96);
         color: #f8fafc;
         border: 1.5px solid #38bdf8;
         border-radius: 14px;
