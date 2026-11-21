@@ -6889,69 +6889,221 @@
         }
       }
 
-      // Live rubber-band preview while moving mouse during Circle / Line / Rectangle drawing
+      // Mobile-safe custom name prompt (works reliably on iOS Safari & Android where window.prompt can be blocked)
+      function askShapeNameModal(titleText, defaultVal, onConfirm, onCancel) {
+        const modal = $("customShapeNameModal");
+        const titleEl = $("customShapeNameTitle");
+        const inputEl = $("customShapeNameInput");
+        const saveBtn = $("customShapeNameSaveBtn");
+        const cancelBtn = $("customShapeNameCancelBtn");
+        const cancelTop = $("customShapeNameCancelTop");
+        if (!modal || !inputEl || !saveBtn) {
+          onConfirm(defaultVal);
+          return;
+        }
+        titleEl.textContent = titleText;
+        inputEl.value = defaultVal;
+        modal.classList.add("open");
+        setTimeout(() => {
+          inputEl.focus();
+          inputEl.select();
+        }, 60);
+
+        const cleanup = () => {
+          modal.classList.remove("open");
+          saveBtn.onclick = null;
+          cancelBtn.onclick = null;
+          cancelTop.onclick = null;
+          inputEl.onkeydown = null;
+        };
+
+        saveBtn.onclick = () => {
+          const val = inputEl.value.trim() || defaultVal;
+          cleanup();
+          onConfirm(val);
+        };
+        const doCancel = () => {
+          cleanup();
+          if (typeof onCancel === "function") onCancel();
+          else cancelAllActiveModes();
+        };
+        cancelBtn.onclick = doCancel;
+        cancelTop.onclick = doCancel;
+        inputEl.onkeydown = (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            saveBtn.click();
+          } else if (ev.key === "Escape") {
+            ev.preventDefault();
+            doCancel();
+          }
+        };
+      }
+
+      function renderLiveShapePreview(p0, p1) {
+        if (!leafletMap || !extraMode) return;
+        if (extraPreview) leafletMap.removeLayer(extraPreview);
+
+        if (extraMode === "circle") {
+          const r = leafletMap.distance(p0, p1);
+          const rNm = r / 1852;
+          extraPreview = L.circle(p0, {
+            radius: r,
+            color: "#f59e0b",
+            weight: 2,
+            dashArray: "6,5",
+            fillOpacity: 0.1,
+          }).addTo(leafletMap);
+          updateMapDrawHud(
+            `◯ نصف القطر: ${rNm.toFixed(2)} NM (${(r / 1000).toFixed(2)} km) | الزمن (78kt): ${fmtTime78(rNm)} — اضغط لتثبيت الدائرة`,
+            true,
+          );
+        } else if (extraMode === "line") {
+          const nm = distNm(p0, p1);
+          const startDot = L.circleMarker(p0, {
+            pane: "airportsTopPane",
+            radius: 7,
+            color: "#ffffff",
+            weight: 2,
+            fillColor: "#10b981",
+            fillOpacity: 1,
+          }).bindTooltip("البداية (Start)", {
+            permanent: true,
+            direction: "top",
+            offset: [0, -7],
+            className: "airport-permanent-label",
+          });
+          const lineSeg = L.polyline([p0, p1], {
+            color: "#22d3ee",
+            weight: 3,
+            dashArray: "6,5",
+          });
+          extraPreview = L.layerGroup([lineSeg, startDot]).addTo(leafletMap);
+          updateMapDrawHud(
+            `／ المسافة: ${nm.toFixed(2)} NM (${(nm * 1.852).toFixed(2)} km) | الزمن (78kt): ${fmtTime78(nm)} — اضغط لتثبيت نقطة النهاية`,
+            true,
+          );
+        } else if (extraMode === "rect") {
+          extraPreview = L.rectangle([p0, p1], {
+            color: "#10b981",
+            weight: 2,
+            dashArray: "6,5",
+            fillOpacity: 0.08,
+          }).addTo(leafletMap);
+          const m = computeShapeMetrics78({ type: "rect", bounds: [p0, p1] });
+          updateMapDrawHud(`□ ${m.summary} — اضغط لتثبيت المستطيل`, true);
+        }
+      }
+
+      // Live rubber-band preview while moving mouse or finger during Circle / Line / Rectangle drawing
       function attachExtraLivePreview() {
         if (!leafletMap || leafletMap._hasExtraPreviewHook) return;
         leafletMap._hasExtraPreviewHook = true;
         leafletMap.on("mousemove", (ev) => {
           if (!extraMode || extraClicks.length !== 1) return;
-          const p0 = extraClicks[0];
-          const p1 = [ev.latlng.lat, ev.latlng.lng];
-          if (extraPreview) leafletMap.removeLayer(extraPreview);
-
-          if (extraMode === "circle") {
-            const r = leafletMap.distance(p0, p1);
-            const rNm = r / 1852;
-            extraPreview = L.circle(p0, {
-              radius: r,
-              color: "#f59e0b",
-              weight: 2,
-              dashArray: "6,5",
-              fillOpacity: 0.1,
-            }).addTo(leafletMap);
-            updateMapDrawHud(
-              `◯ نصف القطر: ${rNm.toFixed(2)} NM (${(r / 1000).toFixed(2)} km) | الزمن (78kt): ${fmtTime78(rNm)} — اضغط لتثبيت الدائرة`,
-              true,
-            );
-          } else if (extraMode === "line") {
-            const nm = distNm(p0, p1);
-            const startDot = L.circleMarker(p0, {
-              pane: "airportsTopPane",
-              radius: 7,
-              color: "#ffffff",
-              weight: 2,
-              fillColor: "#10b981",
-              fillOpacity: 1,
-            }).bindTooltip("البداية (Start)", {
-              permanent: true,
-              direction: "top",
-              offset: [0, -7],
-              className: "airport-permanent-label",
-            });
-            const lineSeg = L.polyline([p0, p1], {
-              color: "#22d3ee",
-              weight: 3,
-              dashArray: "6,5",
-            });
-            extraPreview = L.layerGroup([lineSeg, startDot]).addTo(leafletMap);
-            updateMapDrawHud(
-              `／ المسافة: ${nm.toFixed(2)} NM (${(nm * 1.852).toFixed(2)} km) | الزمن (78kt): ${fmtTime78(nm)} — اضغط لتثبيت نقطة النهاية`,
-              true,
-            );
-          } else if (extraMode === "rect") {
-            extraPreview = L.rectangle([p0, p1], {
-              color: "#10b981",
-              weight: 2,
-              dashArray: "6,5",
-              fillOpacity: 0.08,
-            }).addTo(leafletMap);
-            const m = computeShapeMetrics78({ type: "rect", bounds: [p0, p1] });
-            updateMapDrawHud(`□ ${m.summary} — اضغط لتثبيت المستطيل`, true);
-          }
+          renderLiveShapePreview(extraClicks[0], [ev.latlng.lat, ev.latlng.lng]);
         });
+        const mapContainer = leafletMap.getContainer();
+        mapContainer.addEventListener(
+          "touchmove",
+          (ev) => {
+            if (!extraMode || extraClicks.length !== 1 || !ev.touches || !ev.touches[0]) return;
+            const ll = leafletMap.mouseEventToLatLng(ev.touches[0]);
+            renderLiveShapePreview(extraClicks[0], [ll.lat, ll.lng]);
+          },
+          { passive: true },
+        );
       }
 
-      // Click handler on map for Extra Draw Modes (Point, Line, Circle, Rectangle)
+      let lastExtraTapTime = 0;
+      function handleExtraDrawTap(ll) {
+        if (!leafletMap || !extraMode || !ll) return;
+        const now = Date.now();
+        if (now - lastExtraTapTime < 220) return; // prevent duplicate touch + synthetic click
+        lastExtraTapTime = now;
+
+        if (extraMode === "point") {
+          extraPicked = ll;
+          $("extraPointCoords").textContent =
+            `North: ${ll.lat.toFixed(6)} · East: ${ll.lng.toFixed(6)}`;
+          extraMode = "";
+          leafletMap.getContainer().style.cursor = "";
+          updateMapDrawHud("", false);
+          $("mapToolsToolWindow")?.classList.add("open");
+          mapToolToast(
+            "تم التقاط الموقع — أدخل اسم النقطة واضغط Save Point",
+            "success",
+          );
+          return;
+        }
+
+        extraClicks.push([ll.lat, ll.lng]);
+        if (extraClicks.length === 1) {
+          // Show initial marker immediately on touch/click
+          renderLiveShapePreview(extraClicks[0], extraClicks[0]);
+          const step2Msg = {
+            line: "／ الخطوة 2 من 2: اضغط على الخريطة لتحديد نقطة نهاية الخط",
+            circle: "◯ الخطوة 2 من 2: اضغط على الخريطة لتحديد نصف القطر وتثبيت الدائرة",
+            rect: "□ الخطوة 2 من 2: اضغط على الخريطة لتحديد الركن المقابل للمستطيل",
+          }[extraMode];
+          updateMapDrawHud(step2Msg, true);
+          mapToolToast(step2Msg, "info");
+          return;
+        }
+
+        if (extraPreview) {
+          leafletMap.removeLayer(extraPreview);
+          extraPreview = null;
+        }
+
+        const capturedMode = extraMode;
+        const capturedClicks = [...extraClicks];
+        // Temporarily pause extraMode while naming modal is open
+        extraMode = "";
+        updateMapDrawHud("", false);
+
+        if (capturedMode === "line" && capturedClicks.length === 2) {
+          const defaultName = `Line ${extraShapes.filter((s) => s.type === "line").length + 1}`;
+          askShapeNameModal("／ اسم الخط / Line Name", defaultName, (chosenName) => {
+            const sh = {
+              id: "s" + Date.now(),
+              type: "line",
+              name: chosenName,
+              points: capturedClicks,
+            };
+            extraShapes.push(sh);
+            finishExtraShape(sh);
+          });
+        } else if (capturedMode === "circle" && capturedClicks.length === 2) {
+          const radius = Math.max(10, leafletMap.distance(capturedClicks[0], capturedClicks[1]));
+          const defaultName = `Circle ${extraShapes.filter((s) => s.type === "circle").length + 1}`;
+          askShapeNameModal("◯ اسم الدائرة / Circle Name", defaultName, (chosenName) => {
+            const sh = {
+              id: "s" + Date.now(),
+              type: "circle",
+              name: chosenName,
+              center: capturedClicks[0],
+              radius,
+            };
+            extraShapes.push(sh);
+            finishExtraShape(sh);
+          });
+        } else if (capturedMode === "rect" && capturedClicks.length === 2) {
+          const defaultName = `Rect ${extraShapes.filter((s) => s.type === "rect").length + 1}`;
+          askShapeNameModal("□ اسم المستطيل / Rectangle Name", defaultName, (chosenName) => {
+            const sh = {
+              id: "s" + Date.now(),
+              type: "rect",
+              name: chosenName,
+              bounds: capturedClicks,
+            };
+            extraShapes.push(sh);
+            finishExtraShape(sh);
+          });
+        }
+      }
+
+      // Desktop click + Mobile touch tap handlers for Extra Draw Modes (Point, Line, Circle, Rectangle)
       $("leafletEgyptMap").addEventListener(
         "click",
         (e) => {
@@ -6966,78 +7118,42 @@
             return;
           e.preventDefault();
           e.stopPropagation();
-
-          const ll = leafletMap.mouseEventToLatLng(e);
-          if (extraMode === "point") {
-            extraPicked = ll;
-            $("extraPointCoords").textContent =
-              `North: ${ll.lat.toFixed(6)} · East: ${ll.lng.toFixed(6)}`;
-            extraMode = "";
-            leafletMap.getContainer().style.cursor = "";
-            updateMapDrawHud("", false);
-            $("mapToolsToolWindow")?.classList.add("open");
-            mapToolToast(
-              "تم التقاط الموقع — أدخل اسم النقطة واضغط Save Point",
-              "success",
-            );
-            return;
-          }
-
-          extraClicks.push([ll.lat, ll.lng]);
-          if (extraClicks.length === 1) {
-            const step2Msg = {
-              line: "／ الخطوة 2 من 2: حرك المؤشر واضغط لتحديد نقطة نهاية الخط",
-              circle: "◯ الخطوة 2 من 2: حرك المؤشر لتحديد نصف القطر ثم اضغط",
-              rect: "□ الخطوة 2 من 2: حرك المؤشر واضغط لتحديد الركن المقابل",
-            }[extraMode];
-            updateMapDrawHud(step2Msg, true);
-            mapToolToast(step2Msg, "info");
-            return;
-          }
-
-          if (extraPreview) {
-            leafletMap.removeLayer(extraPreview);
-            extraPreview = null;
-          }
-
-          if (extraMode === "line" && extraClicks.length === 2) {
-            const defaultName = `Line ${extraShapes.filter((s) => s.type === "line").length + 1}`;
-            const name = prompt("Line name / اسم الخط", defaultName);
-            const sh = {
-              id: "s" + Date.now(),
-              type: "line",
-              name: (name && name.trim()) || defaultName,
-              points: extraClicks,
-            };
-            extraShapes.push(sh);
-            finishExtraShape(sh);
-          } else if (extraMode === "circle" && extraClicks.length === 2) {
-            const radius = leafletMap.distance(extraClicks[0], extraClicks[1]);
-            const defaultName = `Circle ${extraShapes.filter((s) => s.type === "circle").length + 1}`;
-            const name = prompt("Circle name / اسم الدائرة", defaultName);
-            const sh = {
-              id: "s" + Date.now(),
-              type: "circle",
-              name: (name && name.trim()) || defaultName,
-              center: extraClicks[0],
-              radius,
-            };
-            extraShapes.push(sh);
-            finishExtraShape(sh);
-          } else if (extraMode === "rect" && extraClicks.length === 2) {
-            const defaultName = `Rect ${extraShapes.filter((s) => s.type === "rect").length + 1}`;
-            const name = prompt("Rectangle name / اسم المستطيل", defaultName);
-            const sh = {
-              id: "s" + Date.now(),
-              type: "rect",
-              name: (name && name.trim()) || defaultName,
-              bounds: extraClicks,
-            };
-            extraShapes.push(sh);
-            finishExtraShape(sh);
-          }
+          handleExtraDrawTap(leafletMap.mouseEventToLatLng(e));
         },
         true,
+      );
+
+      let extraTouchStartPos = null;
+      $("leafletEgyptMap").addEventListener(
+        "touchstart",
+        (e) => {
+          if (!leafletMap || !extraMode || !e.touches || e.touches.length !== 1) return;
+          extraTouchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        },
+        { passive: true, capture: true },
+      );
+
+      $("leafletEgyptMap").addEventListener(
+        "touchend",
+        (e) => {
+          if (!leafletMap || !extraMode || !extraTouchStartPos || !e.changedTouches || !e.changedTouches[0]) return;
+          const t = e.changedTouches[0];
+          const moved = Math.hypot(t.clientX - extraTouchStartPos.x, t.clientY - extraTouchStartPos.y);
+          extraTouchStartPos = null;
+          if (moved > 18) return; // ignore map pan gestures
+          if (
+            e.target &&
+            e.target.closest &&
+            (e.target.closest(".leaflet-control") ||
+              e.target.closest(".map-draw-hud") ||
+              e.target.closest(".shape-hover-card"))
+          )
+            return;
+          e.preventDefault();
+          e.stopPropagation();
+          handleExtraDrawTap(leafletMap.mouseEventToLatLng(t));
+        },
+        { passive: false, capture: true },
       );
 
       // زر حفظ النقطة (Save Point) في Map Tools
@@ -7661,6 +7777,23 @@
       <span class="toast-icon" id="mapToolToastIcon">🛰️</span>
       <span id="mapToolToastText"></span>
       <button type="button" class="toast-dismiss" id="mapToolToastClose" title="إخفاء">✕</button>
+    </div>
+
+    <div id="customShapeNameModal" class="map-tool-window" style="z-index: 13000;">
+      <div class="map-tool-window-card" style="max-width: 420px; padding: 18px;">
+        <div class="map-tool-window-head" style="position: static; padding-bottom: 8px;">
+          <h3 id="customShapeNameTitle" style="font-size: 16px;">💾 حفظ الشكل / Save Shape</h3>
+          <button type="button" class="window-close" id="customShapeNameCancelTop">✕</button>
+        </div>
+        <div style="margin: 10px 0;">
+          <label for="customShapeNameInput" style="display:block; margin-bottom:6px; color:#cbd5e1; font-size:12px;">أدخل الاسم / Enter Name:</label>
+          <input id="customShapeNameInput" type="text" style="width:100%; height:46px; border-radius:10px; border:1px solid #64748b; background:#f8fafc; color:#0f172a; font-size:16px; font-weight:700; padding:0 12px; text-align:center;" />
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px;">
+          <button type="button" id="customShapeNameSaveBtn" style="background:#10b981; color:#fff; border:0; border-radius:10px; height:44px; font-weight:800; font-size:14px; cursor:pointer;">حفظ ✓</button>
+          <button type="button" id="customShapeNameCancelBtn" style="background:#dc2626; color:#fff; border:0; border-radius:10px; height:44px; font-weight:800; font-size:14px; cursor:pointer;">إلغاء ✕</button>
+        </div>
+      </div>
     </div>
 
     <script>
